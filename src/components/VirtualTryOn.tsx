@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Brain, Camera, X, Download, AlertCircle, Circle, Square, Heart, Sparkles, Star, RotateCcw } from 'lucide-react'
 import { FaceMesh } from '@mediapipe/face_mesh'
 import { Camera as MediaPipeCamera } from '@mediapipe/camera_utils'
@@ -90,11 +90,11 @@ const VirtualTryOn: React.FC = () => {
       rating: 4.5,
       reviews: 1250,
       isBestseller: true,
-      image: 'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=400&q=80',
+      image: 'https://picsum.photos/300/200?random=1',
       width: 140,
       height: 50,
       suitableFor: ['oval', 'square', 'heart'],
-      stylePoints: ['Softens angular features', 'Classic timeless style']
+      stylePoints: ['Làm mềm đường nét góc cạnh', 'Phong cách cổ điển vượt thời gian']
     },
     {
       id: '2', 
@@ -111,11 +111,11 @@ const VirtualTryOn: React.FC = () => {
       rating: 4.3,
       reviews: 890,
       isNew: true,
-      image: 'https://images.unsplash.com/photo-1574258495973-f010dfbb5371?w=400&q=80',
+      image: 'https://picsum.photos/300/200?random=2',
       width: 135,
       height: 45,
       suitableFor: ['round', 'oval'],
-      stylePoints: ['Adds structure', 'Professional appearance']
+      stylePoints: ['Tạo cấu trúc cho mặt', 'Vẻ ngoài chuyên nghiệp']
     },
     {
       id: '3',
@@ -131,11 +131,11 @@ const VirtualTryOn: React.FC = () => {
       features: ['Fashion Forward', 'Lightweight'],
       rating: 4.6,
       reviews: 650,
-      image: 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=400&q=80',
+      image: 'https://picsum.photos/300/200?random=3',
       width: 145,
       height: 52,
       suitableFor: ['heart', 'diamond', 'oval'],
-      stylePoints: ['Balances forehead', 'Feminine elegance']
+      stylePoints: ['Cân bằng trán rộng', 'Nữ tính thanh lịch']
     },
     {
       id: '4',
@@ -151,11 +151,11 @@ const VirtualTryOn: React.FC = () => {
       features: ['Vintage Style', 'High Quality'],
       rating: 4.4,
       reviews: 420,
-      image: 'https://images.unsplash.com/photo-1508296695146-257a814070b4?w=400&q=80',
+      image: 'https://picsum.photos/300/200?random=4',
       width: 142,
       height: 48,
       suitableFor: ['square', 'oblong'],
-      stylePoints: ['Softens sharp angles', 'Intellectual look']
+      stylePoints: ['Làm mềm góc cạnh sắc nét', 'Phong cách trí thức']
     },
     {
       id: '5',
@@ -172,11 +172,11 @@ const VirtualTryOn: React.FC = () => {
       rating: 4.7,
       reviews: 890,
       isBestseller: true,
-      image: 'https://images.unsplash.com/photo-1584464491033-06628f3a6b7b?w=400&q=80',
+      image: 'https://picsum.photos/300/200?random=5',
       width: 148,
       height: 55,
       suitableFor: ['round', 'oval', 'heart'],
-      stylePoints: ['Fashion statement', 'Covers imperfections']
+      stylePoints: ['Tạo điểm nhấn thời trang', 'Che khuyết điểm hiệu quả']
     }
   ]
 
@@ -205,7 +205,12 @@ const VirtualTryOn: React.FC = () => {
       setModelLoadingProgress(75)
       setDebugInfo('🔗 Setting up face detection callbacks...')
       
+      // Throttled onResults callback
       faceMesh.onResults((results) => {
+        const now = Date.now()
+        if (now - (faceMesh as any).lastUpdate < 100) return // Throttle updates
+        ;(faceMesh as any).lastUpdate = now
+        
         if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
           const landmarks = results.multiFaceLandmarks[0]
           setFaceLandmarks(landmarks)
@@ -243,27 +248,34 @@ const VirtualTryOn: React.FC = () => {
             if (isWellPositioned && !isAnalyzing && !capturedPhoto) {
               // Auto analyze after 3 seconds
               if (!countdown) {
+                // Direct call to avoid dependency issues
+                if (autoTriggerTimerRef.current) {
+                  clearTimeout(autoTriggerTimerRef.current)
+                }
+                if (countdownTimerRef.current) {
+                  clearTimeout(countdownTimerRef.current)
+                }
+                
                 setCountdown(3)
-                const timer = setTimeout(() => {
-                  if (!capturedPhoto && !isAnalyzing) {
-                    performAnalysis()
+                
+                autoTriggerTimerRef.current = setTimeout(() => {
+                  if (performAnalysisRef.current) {
+                    performAnalysisRef.current()
                   }
                 }, 3000)
                 
-                const countInterval = setInterval(() => {
+                countdownTimerRef.current = setInterval(() => {
                   setCountdown(prev => {
                     if (prev === null || prev <= 1) {
-                      clearInterval(countInterval)
+                      if (countdownTimerRef.current) {
+                        clearInterval(countdownTimerRef.current)
+                        countdownTimerRef.current = null
+                      }
                       return null
                     }
                     return prev - 1
                   })
                 }, 1000)
-                
-                return () => {
-                  clearTimeout(timer)
-                  clearInterval(countInterval)
-                }
               }
             }
           }
@@ -328,6 +340,126 @@ const VirtualTryOn: React.FC = () => {
     }
   }, [])
 
+  const performAnalysisRef = useRef<(() => void) | null>(null)
+  const autoTriggerTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  // AI-powered recommendations using MediaPipe facial measurements
+  const generateRecommendations = useCallback((analysis: FaceAnalysis): FaceRecommendation[] => {
+    // AI-based compatibility scoring using actual facial measurements
+    const calculateAICompatibility = (glass: GlassFrame, features: FaceAnalysis['features']) => {
+      const faceRatio = features.faceWidth / features.faceHeight
+      const jawRatio = features.jawWidth / features.faceWidth  
+      const eyeRatio = features.eyeDistance / features.faceWidth
+      
+      // AI scoring algorithm based on facial geometry
+      let aiScore = 0.5 // Base score
+      
+      // Glass shape compatibility with face ratios
+      switch (glass.shape) {
+        case 'aviator':
+          // Good for wider faces, balances proportions
+          if (faceRatio > 0.85) aiScore += 0.25
+          if (analysis.shape === 'square' || analysis.shape === 'oblong') aiScore += 0.15
+          if (features.foreheadWidth > features.jawWidth) aiScore += 0.1
+          break
+          
+        case 'rectangle':
+          // Excellent for round faces, adds structure
+          if (analysis.shape === 'round') aiScore += 0.35
+          if (faceRatio > 0.9) aiScore += 0.25
+          if (jawRatio > 0.8) aiScore += 0.1
+          break
+          
+        case 'round':
+          // Perfect for angular faces
+          if (analysis.shape === 'square') aiScore += 0.35
+          if (analysis.shape === 'diamond') aiScore += 0.25
+          if (jawRatio < 0.85) aiScore += 0.15
+          break
+          
+        case 'cat-eye':
+          // Ideal for heart and diamond shapes
+          if (analysis.shape === 'heart') aiScore += 0.4
+          if (analysis.shape === 'diamond') aiScore += 0.3
+          if (features.foreheadWidth > features.jawWidth) aiScore += 0.15
+          break
+          
+        case 'square':
+          // Good for round and oval faces
+          if (analysis.shape === 'round') aiScore += 0.3
+          if (analysis.shape === 'oval') aiScore += 0.2
+          if (faceRatio > 0.9) aiScore += 0.15
+          break
+          
+        default:
+          aiScore += 0.1 // Default compatibility
+      }
+      
+      // Bonus for high-confidence face detection
+      aiScore += (analysis.confidence - 0.5) * 0.2
+      
+      // Eye distance compatibility
+      const optimalEyeRatio = 0.3 // Optimal eye distance ratio
+      const eyeRatioScore = 1 - Math.abs(eyeRatio - optimalEyeRatio) * 2
+      aiScore += eyeRatioScore * 0.1
+      
+      // Face width compatibility with glass width
+      const widthCompatibility = Math.min(1, glass.width / features.faceWidth * 2)
+      aiScore += widthCompatibility * 0.05
+      
+      return Math.min(0.98, Math.max(0.3, aiScore))
+    }
+    
+    // Generate AI-powered recommendations
+    const aiRecommendations = glassFrames.map(glass => {
+      const aiMatchScore = calculateAICompatibility(glass, analysis.features)
+      
+      // AI-generated reasons based on facial analysis
+      const aiReasons = []
+      
+      // Face shape specific reasons
+      if (glass.suitableFor.includes(analysis.shape)) {
+        aiReasons.push(`Phù hợp với khuôn mặt ${analysis.shape}`)
+      }
+      
+      // Width compatibility
+      const widthRatio = glass.width / analysis.features.faceWidth
+      if (widthRatio > 0.4 && widthRatio < 0.6) {
+        aiReasons.push('Tỷ lệ kích thước hoàn hảo')
+      }
+      
+      // Eye distance compatibility  
+      const eyeRatio = analysis.features.eyeDistance / analysis.features.faceWidth
+      if (eyeRatio > 0.25 && eyeRatio < 0.35) {
+        aiReasons.push('Khoảng cách mắt phù hợp')
+      }
+      
+      // High confidence bonus
+      if (analysis.confidence > 0.9) {
+        aiReasons.push(`Phân tích chính xác ${Math.round(analysis.confidence * 100)}%`)
+      }
+      
+      // Add style points (keep original style points as they're glass-specific)
+      aiReasons.push(...glass.stylePoints.slice(0, 2))
+      
+      const recommendation: FaceRecommendation = {
+        glass,
+        matchScore: aiMatchScore,
+        reasons: aiReasons,
+        priority: (aiMatchScore >= 0.85 ? 'perfect' : aiMatchScore >= 0.7 ? 'good' : 'okay') as FaceRecommendation['priority']
+      }
+      
+      console.log(`� [AI] ${glass.name}: Score ${aiMatchScore.toFixed(3)} (${recommendation.priority})`)
+      return recommendation
+    }).sort((a, b) => b.matchScore - a.matchScore)
+    
+    console.log('✅ [AI] Generated', aiRecommendations.length, 'AI recommendations, top match:', 
+      aiRecommendations[0]?.glass.name, 'with AI score:', aiRecommendations[0]?.matchScore.toFixed(3))
+    
+    return aiRecommendations
+  }, [])
+
   // Enhanced analysis using MediaPipe landmarks
   const performAnalysis = useCallback(() => {
     const video = videoRef.current
@@ -338,7 +470,6 @@ const VirtualTryOn: React.FC = () => {
       return
     }
     
-    console.log('🎯 Starting MediaPipe face analysis...')
     setIsAnalyzing(true)
     setAnalysisProgress(0)
     setDebugInfo('📸 Capturing with MediaPipe analysis...')
@@ -388,12 +519,15 @@ const VirtualTryOn: React.FC = () => {
         setRecommendations(glassRecommendations)
         setIsAnalyzing(false)
         setAnalysisProgress(0)
-        setDebugInfo(`🎉 MediaPipe Analysis: ${analysis.shape} (${Math.round(analysis.confidence * 100)}% confidence)`)
-        
-        console.log('✅ MediaPipe Analysis complete:', analysis.shape)
+        setDebugInfo(`🎉 MediaPipe Analysis: ${analysis.shape} (${Math.round(analysis.confidence * 100)}% confidence) - ${glassRecommendations.length} recommendations`)
       }
     }, 800)
-  }, [faceLandmarks])
+  }, [faceLandmarks, generateRecommendations])
+
+  // Update ref when function changes
+  useEffect(() => {
+    performAnalysisRef.current = performAnalysis
+  }, [performAnalysis])
 
   // Advanced face analysis using MediaPipe 468 landmarks
   const analyzeMediaPipeFace = (landmarks: any[], width: number, height: number): FaceAnalysis => {
@@ -546,38 +680,6 @@ const VirtualTryOn: React.FC = () => {
     }
   }
 
-  // Generate recommendations
-  const generateRecommendations = useCallback((analysis: FaceAnalysis): FaceRecommendation[] => {
-    const shapeCompatibility: Record<string, Record<string, number>> = {
-      oval: { aviator: 0.95, rectangle: 0.90, 'cat-eye': 0.88, round: 0.85, square: 0.82 },
-      round: { rectangle: 0.95, square: 0.92, aviator: 0.85, 'cat-eye': 0.75, round: 0.65 },
-      square: { round: 0.95, aviator: 0.88, 'cat-eye': 0.85, rectangle: 0.75, square: 0.65 },
-      heart: { 'cat-eye': 0.95, aviator: 0.88, round: 0.82, rectangle: 0.78, square: 0.72 },
-      diamond: { 'cat-eye': 0.92, aviator: 0.88, rectangle: 0.85, round: 0.80, square: 0.75 },
-      oblong: { aviator: 0.95, round: 0.88, square: 0.85, 'cat-eye': 0.78, rectangle: 0.72 }
-    }
-    
-    const compatibility = shapeCompatibility[analysis.shape] || shapeCompatibility.oval
-    
-    return glassFrames
-      .map(glass => {
-        const baseScore = compatibility[glass.shape] || 0.70
-        const adjustedScore = Math.min(0.98, baseScore + (Math.random() * 0.05 - 0.025)) // Small random variation
-        
-        return {
-          glass,
-          matchScore: adjustedScore,
-          reasons: [
-            ...glass.stylePoints,
-            `Hoàn hảo cho khuôn mặt ${analysis.shape}`,
-            `MediaPipe AI phân tích: ${Math.round(analysis.confidence * 100)}% độ chính xác`
-          ],
-          priority: (adjustedScore >= 0.9 ? 'perfect' : adjustedScore >= 0.8 ? 'good' : 'okay') as FaceRecommendation['priority']
-        }
-      })
-      .sort((a, b) => b.matchScore - a.matchScore)
-  }, [])
-
   // Stop camera and cleanup
   const stopCamera = useCallback(() => {
     if (mediaPipeCameraRef.current) {
@@ -608,14 +710,160 @@ const VirtualTryOn: React.FC = () => {
     setCountdown(null)
   }, [])
 
-  // Download result
+  // Enhanced download with analysis report
   const downloadResult = useCallback(() => {
-    if (!canvasRef.current) return
-    const link = document.createElement('a')
-    link.download = `mediapipe-analysis-${faceAnalysis?.shape || 'result'}.jpg`
-    link.href = canvasRef.current.toDataURL('image/jpeg', 0.9)
-    link.click()
-  }, [faceAnalysis])
+    if (!canvasRef.current || !faceAnalysis) return
+    
+    // Create a comprehensive analysis report canvas
+    const reportCanvas = document.createElement('canvas')
+    const ctx = reportCanvas.getContext('2d')
+    if (!ctx) return
+    
+    // Set canvas size for report
+    reportCanvas.width = 1200
+    reportCanvas.height = 1600
+    
+    // White background
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, reportCanvas.width, reportCanvas.height)
+    
+    // Draw the captured photo
+    const img = new Image()
+    img.onload = () => {
+      // Header
+      ctx.fillStyle = '#1e40af'
+      ctx.fillRect(0, 0, reportCanvas.width, 120)
+      
+      ctx.fillStyle = '#ffffff'
+      ctx.font = 'bold 32px Arial'
+      ctx.textAlign = 'center'
+      ctx.fillText('🎯 MediaPipe Face Analysis Report', reportCanvas.width / 2, 50)
+      
+      ctx.font = '18px Arial'
+      ctx.fillText(`Ngày phân tích: ${new Date().toLocaleDateString('vi-VN')}`, reportCanvas.width / 2, 90)
+      
+      // Draw captured photo
+      const photoSize = 400
+      const photoX = (reportCanvas.width - photoSize) / 2
+      const photoY = 150
+      
+      ctx.drawImage(img, photoX, photoY, photoSize, photoSize * (img.height / img.width))
+      
+      // Analysis results section
+      let currentY = photoY + photoSize + 50
+      
+      // Face shape analysis
+      ctx.fillStyle = '#1f2937'
+      ctx.font = 'bold 28px Arial'
+      ctx.textAlign = 'left'
+      ctx.fillText('📊 Kết Quả Phân Tích:', 50, currentY)
+      currentY += 50
+      
+      // Face shape with confidence
+      ctx.font = 'bold 24px Arial'
+      ctx.fillStyle = '#059669'
+      ctx.fillText(`Khuôn mặt: ${faceAnalysis.shape.toUpperCase()}`, 80, currentY)
+      currentY += 35
+      
+      ctx.font = '20px Arial'
+      ctx.fillStyle = '#374151'
+      ctx.fillText(`Độ tin cậy: ${Math.round(faceAnalysis.confidence * 100)}%`, 80, currentY)
+      currentY += 50
+      
+      // Features section
+      ctx.font = 'bold 22px Arial'
+      ctx.fillStyle = '#1f2937'
+      ctx.fillText('📏 Thông Số Khuôn Mặt (MediaPipe 468 points):', 50, currentY)
+      currentY += 40
+      
+      const features = [
+        `Chiều rộng mặt: ${faceAnalysis.features.faceWidth}px`,
+        `Chiều cao mặt: ${faceAnalysis.features.faceHeight}px`,
+        `Chiều rộng hàm: ${faceAnalysis.features.jawWidth}px`,
+        `Chiều rộng trán: ${faceAnalysis.features.foreheadWidth}px`,  
+        `Khoảng cách mắt: ${faceAnalysis.features.eyeDistance}px`
+      ]
+      
+      ctx.font = '18px Arial'
+      ctx.fillStyle = '#4b5563'
+      features.forEach(feature => {
+        ctx.fillText(`• ${feature}`, 80, currentY)
+        currentY += 30
+      })
+      
+      currentY += 20
+      
+      // Characteristics section
+      ctx.font = 'bold 22px Arial'
+      ctx.fillStyle = '#1f2937'
+      ctx.fillText('✨ Đặc Điểm Khuôn Mặt:', 50, currentY)
+      currentY += 40
+      
+      ctx.font = '18px Arial'
+      ctx.fillStyle = '#4b5563'
+      faceAnalysis.characteristics.forEach(char => {
+        ctx.fillText(`• ${char}`, 80, currentY)
+        currentY += 30
+      })
+      
+      currentY += 20
+      
+      // Recommendations section  
+      ctx.font = 'bold 22px Arial'
+      ctx.fillStyle = '#1f2937'
+      ctx.fillText('💡 Gợi Ý Chọn Kính:', 50, currentY)
+      currentY += 40
+      
+      ctx.font = '18px Arial'
+      ctx.fillStyle = '#059669'
+      faceAnalysis.recommendations.forEach(rec => {
+        ctx.fillText(`✓ ${rec}`, 80, currentY)
+        currentY += 30
+      })
+      
+      // Top glasses recommendations
+      if (recommendations.length > 0) {
+        currentY += 30
+        ctx.font = 'bold 22px Arial'
+        ctx.fillStyle = '#1f2937'
+        ctx.fillText('🥽 Top Kính Được Gợi Ý:', 50, currentY)
+        currentY += 40
+        
+        recommendations.slice(0, 3).forEach((rec, index) => {
+          ctx.font = 'bold 20px Arial'
+          ctx.fillStyle = rec.priority === 'perfect' ? '#059669' : rec.priority === 'good' ? '#2563eb' : '#6b7280'
+          ctx.fillText(`${index + 1}. ${rec.glass.name}`, 80, currentY)
+          currentY += 30
+          
+          ctx.font = '16px Arial'
+          ctx.fillStyle = '#4b5563'
+          ctx.fillText(`   ${rec.glass.brand} • Độ phù hợp: ${Math.round(rec.matchScore * 100)}%`, 80, currentY)
+          currentY += 25
+          
+          ctx.fillText(`   ${rec.reasons[0] || 'Phù hợp với khuôn mặt của bạn'}`, 80, currentY)
+          currentY += 35
+        })
+      }
+      
+      // Footer
+      ctx.fillStyle = '#e5e7eb'
+      ctx.fillRect(0, reportCanvas.height - 80, reportCanvas.width, 80)
+      
+      ctx.fillStyle = '#6b7280'
+      ctx.font = '16px Arial'
+      ctx.textAlign = 'center'
+      ctx.fillText('Powered by Google MediaPipe AI • 468 Facial Landmarks Analysis', reportCanvas.width / 2, reportCanvas.height - 45)
+      ctx.fillText('Glasses Shop - Professional Face Analysis Service', reportCanvas.width / 2, reportCanvas.height - 20)
+      
+      // Download the complete report
+      const link = document.createElement('a')
+      link.download = `MediaPipe-Analysis-Report-${faceAnalysis.shape}-${new Date().toISOString().split('T')[0]}.jpg`
+      link.href = reportCanvas.toDataURL('image/jpeg', 0.9)
+      link.click()
+    }
+    
+    img.src = canvasRef.current.toDataURL('image/jpeg', 0.9)
+  }, [faceAnalysis, recommendations])
 
   // Initialize MediaPipe when modal opens
   useEffect(() => {
@@ -629,8 +877,8 @@ const VirtualTryOn: React.FC = () => {
     return () => stopCamera()
   }, [stopCamera])
 
-  // Face shape icon
-  const getFaceShapeIcon = (shape: FaceAnalysis['shape']) => {
+  // Memoized face shape icon to prevent re-renders
+  const getFaceShapeIcon = useMemo(() => (shape: FaceAnalysis['shape']) => {
     switch (shape) {
       case 'oval': return <Circle className="w-4 h-4" />
       case 'round': return <Circle className="w-4 h-4" />
@@ -639,16 +887,16 @@ const VirtualTryOn: React.FC = () => {
       case 'diamond': return <Sparkles className="w-4 h-4" />
       case 'oblong': return <Square className="w-4 h-4 rotate-90" />
     }
-  }
+  }, [])
 
-  // Priority colors
-  const getPriorityColor = (priority: FaceRecommendation['priority']) => {
+  // Memoized priority colors to prevent re-renders
+  const getPriorityColor = useMemo(() => (priority: FaceRecommendation['priority']) => {
     switch (priority) {
-      case 'perfect': return 'text-green-600 bg-green-50 border-green-200'
-      case 'good': return 'text-blue-600 bg-blue-50 border-blue-200'
-      case 'okay': return 'text-gray-600 bg-gray-50 border-gray-200'
+      case 'perfect': return 'text-green-800 bg-green-100 border-green-300'
+      case 'good': return 'text-blue-800 bg-blue-100 border-blue-300'
+      case 'okay': return 'text-gray-800 bg-gray-100 border-gray-300'
     }
-  }
+  }, [])
 
   return (
     <>
@@ -663,18 +911,22 @@ const VirtualTryOn: React.FC = () => {
 
       {/* Modal */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setIsOpen(false)} />
+        <div className="fixed inset-0 z-[9999] overflow-y-auto">
+          <div className="flex items-start justify-center min-h-screen px-2 sm:px-4 pt-16 pb-4">
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-50" 
+              onClick={() => setIsOpen(false)}
+              aria-label="Đóng modal"
+            />
             
-            <div className="relative bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-6xl max-h-[90vh] overflow-y-auto">
+            <div className="relative bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 w-full max-w-6xl max-h-[calc(100vh-8rem)] overflow-y-auto mt-4 shadow-2xl animate-fadeIn">
               {/* Header */}
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-white dark:bg-gray-800 z-10 pb-2 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex-1 pr-4">
+                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2">
                     🎯 Google MediaPipe Face Analysis
                   </h2>
-                  <p className="text-gray-600 dark:text-gray-300">
+                  <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300">
                     Phân tích chuyên nghiệp với 468 landmark points - Công nghệ Google
                   </p>
                 </div>
@@ -683,7 +935,8 @@ const VirtualTryOn: React.FC = () => {
                     setIsOpen(false)
                     stopCamera()
                   }}
-                  className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 z-10 flex-shrink-0 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+                  title="Đóng modal"
                 >
                   <X size={24} />
                 </button>
@@ -729,13 +982,13 @@ const VirtualTryOn: React.FC = () => {
                 </div>
               )}
 
-              <div className="grid lg:grid-cols-2 gap-8">
+              <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
                 {/* Camera Section */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                     📷 MediaPipe Camera
                     {isModelLoaded && (
-                      <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">
+                      <span className="text-xs sm:text-sm bg-green-100 text-green-800 px-2 py-1 rounded">
                         ✓ Google AI Ready
                       </span>
                     )}
@@ -774,7 +1027,7 @@ const VirtualTryOn: React.FC = () => {
                                 : 'rgba(251, 191, 36, 0.1)'
                             }}
                           >
-                            <div className="absolute -bottom-20 left-1/2 transform -translate-x-1/2 text-center">
+                            <div className="absolute -bottom-12 left-1/2 transform -translate-x-1/2 text-center">
                               <div className={`px-4 py-2 rounded-lg text-sm font-medium ${
                                 faceDetected 
                                   ? countdown 
@@ -782,16 +1035,16 @@ const VirtualTryOn: React.FC = () => {
                                     : 'bg-green-500 text-white' 
                                   : 'bg-yellow-500 text-white animate-bounce'
                               }`}>
-                                {faceDetected 
+                                {/* {faceDetected 
                                   ? countdown 
                                     ? `🎯 Auto analysis in ${countdown}s` 
                                     : '✅ 468 landmarks detected!' 
-                                  : '📍 Position your face in circle'}
+                                  : '📍 Position your face in circle'} */}
                               </div>
                               {countdown && countdown > 0 && (
                                 <div className="mt-2">
-                                  <div className="w-12 h-12 mx-auto bg-green-100 rounded-full flex items-center justify-center">
-                                    <span className="text-2xl font-bold text-green-600">{countdown}</span>
+                                  <div className="w-10 h-10 mx-auto bg-green-100 rounded-full flex items-center justify-center">
+                                    <span className="text-lg font-bold text-green-600">{countdown}</span>
                                   </div>
                                 </div>
                               )}
@@ -841,13 +1094,22 @@ const VirtualTryOn: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Captured Photo */}
+                    {/* Captured Photo Display */}
                     {capturedPhoto && (
-                      <canvas
-                        ref={canvasRef}
+                      <img
+                        src={capturedPhoto}
+                        alt="Captured analysis"
                         className="w-full h-full object-cover"
                       />
                     )}
+
+                    {/* Hidden Canvas for Capture - Always Present */}
+                    <canvas
+                      ref={canvasRef}
+                      className="hidden"
+                      width={640}
+                      height={480}
+                    />
 
                     {/* Camera Off */}
                     {!isCameraOn && !capturedPhoto && (
@@ -882,10 +1144,13 @@ const VirtualTryOn: React.FC = () => {
                     )}
 
                     {/* Manual Analysis Button */}
-                    {isCameraOn && !capturedPhoto && !isAnalyzing && faceDetected && (
-                      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+                    {isCameraOn && !capturedPhoto && !isAnalyzing && faceDetected && !countdown && (
+                      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex flex-col gap-2">
                         <button
-                          onClick={performAnalysis}
+                          onClick={() => {
+                            console.log('🖱️ [DEBUG] Manual analysis button clicked!')
+                            performAnalysis()
+                          }}
                           className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-full flex items-center gap-2 shadow-lg font-bold animate-pulse"
                         >
                           🎯 Analyze with MediaPipe
@@ -932,44 +1197,88 @@ const VirtualTryOn: React.FC = () => {
 
                   {/* Photo Actions */}
                   {capturedPhoto && faceAnalysis && (
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => {
-                          setCapturedPhoto(null)
-                          setFaceAnalysis(null)
-                          setRecommendations([])
-                          startCamera()
-                        }}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2"
-                      >
-                        <RotateCcw size={20} />
-                        Analyze Again
-                      </button>
-                      <button
-                        onClick={downloadResult}
-                        className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2"
-                      >
-                        <Download size={20} />
-                        Download
-                      </button>
+                    <div className="space-y-3">
+                      <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-lg p-3">
+                        <p className="text-sm text-green-700 dark:text-green-300 flex items-center gap-2">
+                          <Download className="w-4 h-4" />
+                          <strong>Báo cáo hoàn chỉnh:</strong> Ảnh + Kết quả phân tích + Top gợi ý kính phù hợp
+                        </p>
+                      </div>
+                      
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => {
+                            setCapturedPhoto(null)
+                            setFaceAnalysis(null)
+                            setRecommendations([])
+                            startCamera()
+                          }}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2"
+                        >
+                          <RotateCcw size={20} />
+                          Analyze Again
+                        </button>
+                        <button
+                          onClick={downloadResult}
+                          className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2"
+                          title="Download báo cáo phân tích đầy đủ bao gồm ảnh, kết quả phân tích và gợi ý kính"
+                        >
+                          <Download size={20} />
+                          📊 Download Báo Cáo
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
 
                 {/* Results Section */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    🎯 MediaPipe Analysis Results
-                  </h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
+                      🎯 Kết quả phân tích khuôn mặt
+                    </h3>
+                    {faceAnalysis && recommendations.length === 0 && (
+                      <button
+                        onClick={() => {
+                          console.log('🔄 Force generating recommendations...')
+                          const newRecs = generateRecommendations(faceAnalysis)
+                          setRecommendations(newRecs)
+                        }}
+                        className="bg-blue-500 hover:bg-blue-600 text-white text-xs sm:text-sm px-3 py-1 rounded"
+                      >
+                        🔄 Tạo gợi ý
+                      </button>
+                    )}
+                  </div>
 
                   {/* Show placeholder when no results */}
                   {!faceAnalysis && !recommendations.length && (
                     <div className="text-center py-12">
                       <div className="text-gray-400 dark:text-gray-500 mb-4">
                         <Brain className="w-16 h-16 mx-auto mb-3 opacity-30" />
-                        <p className="text-lg font-medium">No analysis yet</p>
-                        <p className="text-sm mt-2">Start MediaPipe camera and position your face for professional analysis</p>
-                        <p className="text-xs mt-1 text-blue-400">468 landmark precision analysis</p>
+                        <p className="text-lg font-medium">Chưa có kết quả phân tích</p>
+                        <p className="text-sm mt-2">Bắt đầu camera và đặt mặt vào vùng hướng dẫn để phân tích chuyên nghiệp</p>
+                        <p className="text-xs mt-1 text-blue-400">Phân tích với độ chính xác cao từ 468 điểm đặc trưng</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Debug Info for Troubleshooting */}
+                  {faceAnalysis && recommendations.length === 0 && (
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 rounded-lg p-4 mb-4">
+                      <div className="flex items-center gap-3">
+                        <AlertCircle className="w-5 h-5 text-yellow-600" />
+                        <div>
+                          <p className="text-yellow-800 dark:text-yellow-200 font-medium">
+                            Analysis completed but no recommendations generated
+                          </p>
+                          <p className="text-yellow-600 text-sm">
+                            Face shape: {faceAnalysis.shape}, Confidence: {Math.round(faceAnalysis.confidence * 100)}%
+                          </p>
+                          <p className="text-yellow-600 text-xs">
+                            Check console for detailed logs
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1015,7 +1324,7 @@ const VirtualTryOn: React.FC = () => {
                             ))}
                           </div>
                           
-                          <div className="mt-3 p-2 bg-blue-50 rounded text-xs">
+                          {/* <div className="mt-3 p-2 bg-blue-50 rounded text-xs">
                             <p className="font-semibold text-blue-800">Precise Measurements:</p>
                             <div className="grid grid-cols-2 gap-1 mt-1">
                               <span>Width: {faceAnalysis.features.faceWidth}px</span>
@@ -1023,7 +1332,7 @@ const VirtualTryOn: React.FC = () => {
                               <span>Jaw: {faceAnalysis.features.jawWidth}px</span>
                               <span>Eyes: {faceAnalysis.features.eyeDistance}px</span>
                             </div>
-                          </div>
+                          </div> */}
                         </div>
                         
                         <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
@@ -1045,8 +1354,8 @@ const VirtualTryOn: React.FC = () => {
                   {recommendations.length > 0 && (
                     <div className="space-y-4">
                       <h4 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                        🥽 MediaPipe AI Recommendations
-                        <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">PROFESSIONAL</span>
+                        🥽 Gợi ý kính phù hợp
+                        <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">AI POWERED</span>
                       </h4>
                       
                       <div className="grid grid-cols-1 gap-4">
@@ -1057,41 +1366,45 @@ const VirtualTryOn: React.FC = () => {
                           >
                             {rec.priority === 'perfect' && (
                               <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
-                                🏆 PERFECT MATCH
+                                🏆 HOÀN HẢO
                               </div>
                             )}
                             
                             <div className="flex gap-4">
-                              <div className="w-24 h-20 bg-gray-100 rounded overflow-hidden flex-shrink-0">
+                              <div className="w-24 h-20 bg-gray-200 rounded overflow-hidden flex-shrink-0 border">
                                 <img
                                   src={rec.glass.image}
                                   alt={rec.glass.name}
                                   className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.src = `https://via.placeholder.com/200x150/4F46E5/FFFFFF?text=${encodeURIComponent(rec.glass.name)}`;
+                                  }}
                                 />
                               </div>
                               
                               <div className="flex-1">
                                 <div className="flex items-start justify-between mb-2">
                                   <div>
-                                    <h5 className="font-medium">{rec.glass.name}</h5>
-                                    <p className="text-sm opacity-75">{rec.glass.brand} • {rec.glass.material}</p>
+                                    <h5 className="font-medium text-gray-900 dark:text-gray-100">{rec.glass.name}</h5>
+                                    <p className="text-sm text-gray-700 dark:text-gray-300">{rec.glass.brand} • {rec.glass.material}</p>
                                     <div className="flex items-center gap-2 mt-1">
                                       {rec.glass.isBestseller && (
-                                        <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">BESTSELLER</span>
+                                        <span className="text-xs bg-red-200 text-red-800 px-2 py-1 rounded font-medium">BESTSELLER</span>
                                       )}
                                       {rec.glass.isNew && (
-                                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">NEW</span>
+                                        <span className="text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded font-medium">NEW</span>
                                       )}
                                     </div>
                                   </div>
                                   <div className="text-right">
                                     <div className="flex items-center gap-1 mb-1">
                                       <Star className="w-3 h-3 fill-current text-yellow-500" />
-                                      <span className="text-sm">{rec.glass.rating}</span>
-                                      <span className="text-xs text-gray-500">({rec.glass.reviews})</span>
+                                      <span className="text-sm text-gray-900 dark:text-gray-100">{rec.glass.rating}</span>
+                                      <span className="text-xs text-gray-600 dark:text-gray-400">({rec.glass.reviews})</span>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                      <span className="text-lg font-bold">${rec.glass.price}</span>
+                                      <span className="text-lg font-bold text-gray-900 dark:text-gray-100">${rec.glass.price}</span>
                                       {rec.glass.originalPrice && (
                                         <span className="text-sm text-gray-500 line-through">${rec.glass.originalPrice}</span>
                                       )}
@@ -1101,22 +1414,22 @@ const VirtualTryOn: React.FC = () => {
                                 
                                 <div className="mb-3">
                                   <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-sm font-medium">MediaPipe Match:</span>
-                                    <div className="flex-1 bg-gray-200 rounded-full h-2">
+                                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Độ phù hợp:</span>
+                                    <div className="flex-1 bg-gray-300 rounded-full h-2">
                                       <div 
                                         className="bg-gradient-to-r from-green-500 to-blue-500 h-2 rounded-full"
                                         style={{ width: `${rec.matchScore * 100}%` }}
                                       />
                                     </div>
-                                    <span className="text-sm font-bold text-green-600">{Math.round(rec.matchScore * 100)}%</span>
+                                    <span className="text-sm font-bold text-green-700 dark:text-green-400">{Math.round(rec.matchScore * 100)}%</span>
                                   </div>
                                 </div>
                                 
                                 <div>
-                                  <p className="text-xs font-medium mb-2">Why MediaPipe recommends:</p>
+                                  <p className="text-sm font-medium mb-2 text-gray-900 dark:text-gray-100">Tại sao được gợi ý:</p>
                                   <div className="flex flex-wrap gap-1">
                                     {rec.reasons.slice(0, 3).map((reason, reasonIndex) => (
-                                      <span key={reasonIndex} className="text-xs bg-white dark:bg-gray-700 px-2 py-1 rounded border">
+                                      <span key={reasonIndex} className="text-xs bg-white dark:bg-gray-600 text-gray-800 dark:text-gray-200 px-2 py-1 rounded border border-gray-300">
                                         {reason}
                                       </span>
                                     ))}
@@ -1125,10 +1438,10 @@ const VirtualTryOn: React.FC = () => {
                                 
                                 <div className="mt-3 flex gap-2">
                                   <button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-4 rounded">
-                                    Try Virtual
+                                    Thử kính ảo
                                   </button>
                                   <button className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-2 px-4 rounded">
-                                    Add to Cart
+                                    Thêm vào giỏ
                                   </button>
                                 </div>
                               </div>

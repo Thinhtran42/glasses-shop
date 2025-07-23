@@ -48,6 +48,17 @@ const translations = {
     'products.accessories.desc': 'Phụ kiện kính mắt: hộp đựng, khăn lau, dây đeo',
     'products.view': 'Xem chi tiết',
     
+    // Product Detail
+    'product.details': 'Chi tiết sản phẩm',
+    'product.reviews': 'đánh giá',
+    'product.color': 'Màu sắc',
+    'product.size': 'Kích thước',
+    'product.inStock': 'Còn hàng',
+    'product.outOfStock': 'Hết hàng',
+    'product.addToCart': 'Thêm vào giỏ',
+    'product.description': 'Mô tả sản phẩm',
+    'product.features': 'Tính năng nổi bật',
+    
     // Services
     'services.title': 'Dịch vụ của chúng tôi',
     'services.subtitle': 'Cam kết chất lượng và sự hài lòng',
@@ -103,7 +114,17 @@ const translations = {
     'footer.privacy': 'Chính sách bảo mật',
     'footer.terms': 'Điều khoản dịch vụ',
     'footer.follow': 'Theo dõi chúng tôi',
-    'footer.rights': 'Bản quyền thuộc về VisionCraft Eyewear. Tất cả các quyền được bảo lưu.'
+    'footer.rights': 'Bản quyền thuộc về VisionCraft Eyewear. Tất cả các quyền được bảo lưu.',
+    
+    // Reviews
+    'reviews.title': 'Đánh giá khách hàng',
+    'reviews.subtitle': 'Khám phá những chia sẻ thật của khách hàng về sản phẩm và dịch vụ của chúng tôi',
+    'reviews.basedOn': 'Dựa trên',
+    'reviews.reviews': 'đánh giá',
+    'reviews.product': 'Sản phẩm',
+    'reviews.verified': 'Đã xác minh',
+    'reviews.cta': 'Bạn đã mua sắm tại cửa hàng của chúng tôi? Hãy chia sẻ trải nghiệm của bạn!',
+    'reviews.writeReview': 'Viết đánh giá'
   },
   en: {
     // Header
@@ -143,6 +164,17 @@ const translations = {
     'products.accessories': 'Accessories',
     'products.accessories.desc': 'Eyewear accessories: cases, cleaning cloths, straps',
     'products.view': 'View Details',
+    
+    // Product Detail
+    'product.details': 'Product Details',
+    'product.reviews': 'reviews',
+    'product.color': 'Color',
+    'product.size': 'Size',
+    'product.inStock': 'In Stock',
+    'product.outOfStock': 'Out of Stock',
+    'product.addToCart': 'Add to Cart',
+    'product.description': 'Product Description',
+    'product.features': 'Key Features',
     
     // Services
     'services.title': 'Our Services',
@@ -199,7 +231,17 @@ const translations = {
     'footer.privacy': 'Privacy Policy',
     'footer.terms': 'Terms of Service',
     'footer.follow': 'Follow Us',
-    'footer.rights': 'Copyright © VisionCraft Eyewear. All rights reserved.'
+    'footer.rights': 'Copyright © VisionCraft Eyewear. All rights reserved.',
+    
+    // Reviews
+    'reviews.title': 'Customer Reviews',
+    'reviews.subtitle': 'Discover genuine customer stories about our products and services',
+    'reviews.basedOn': 'Based on',
+    'reviews.reviews': 'reviews',
+    'reviews.product': 'Product',
+    'reviews.verified': 'Verified',
+    'reviews.cta': 'Have you shopped with us? Share your experience!',
+    'reviews.writeReview': 'Write a Review'
   }
 }
 
