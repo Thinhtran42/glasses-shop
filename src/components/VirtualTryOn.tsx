@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Brain, Camera, X, Download, AlertCircle, Circle, Square, Heart, Sparkles, Star, RotateCcw } from 'lucide-react'
-import { FaceMesh } from '@mediapipe/face_mesh'
-import { Camera as MediaPipeCamera } from '@mediapipe/camera_utils'
+// Dynamic import cho MediaPipe để tương thích với Vercel
+// import { FaceMesh } from '@mediapipe/face_mesh'
+// import { Camera as MediaPipeCamera } from '@mediapipe/camera_utils'
 
 interface FaceAnalysis {
   shape: 'oval' | 'round' | 'square' | 'heart' | 'diamond' | 'oblong'
@@ -53,8 +54,8 @@ const VirtualTryOn: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const faceMeshRef = useRef<FaceMesh | null>(null)
-  const mediaPipeCameraRef = useRef<MediaPipeCamera | null>(null)
+  const faceMeshRef = useRef<any>(null) // MediaPipe FaceMesh instance
+  const mediaPipeCameraRef = useRef<any>(null) // MediaPipe Camera instance
   
   // States
   const [isOpen, setIsOpen] = useState(false)
@@ -180,14 +181,28 @@ const VirtualTryOn: React.FC = () => {
     }
   ]
 
-  // Initialize MediaPipe Face Mesh
+  // Initialize MediaPipe Face Mesh with dynamic import for Vercel compatibility
   const initializeMediaPipe = useCallback(async () => {
     try {
-      setModelLoadingProgress(20)
-      setDebugInfo('🚀 Initializing Google MediaPipe...')
+      // Check if running in browser environment
+      if (typeof window === 'undefined') {
+        throw new Error('MediaPipe can only run in browser environment')
+      }
+
+      setModelLoadingProgress(10)
+      setDebugInfo('� Loading MediaPipe modules...')
+      
+      // Dynamic import MediaPipe modules
+      const [{ FaceMesh }, { Camera: MediaPipeCamera }] = await Promise.all([
+        import('@mediapipe/face_mesh'),
+        import('@mediapipe/camera_utils')
+      ])
+      
+      setModelLoadingProgress(30)
+      setDebugInfo('�🚀 Initializing Google MediaPipe...')
       
       const faceMesh = new FaceMesh({
-        locateFile: (file) => {
+        locateFile: (file: string) => {
           return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
         }
       })
@@ -206,7 +221,7 @@ const VirtualTryOn: React.FC = () => {
       setDebugInfo('🔗 Setting up face detection callbacks...')
       
       // Throttled onResults callback
-      faceMesh.onResults((results) => {
+      faceMesh.onResults((results: any) => {
         const now = Date.now()
         if (now - (faceMesh as any).lastUpdate < 100) return // Throttle updates
         ;(faceMesh as any).lastUpdate = now
@@ -288,19 +303,33 @@ const VirtualTryOn: React.FC = () => {
         }
       })
       
+      setModelLoadingProgress(90)
+      setDebugInfo('💾 Storing MediaPipe instances...')
+      
+      // Store both MediaPipe classes for later use
+      faceMeshRef.current = faceMesh
+      ;(faceMeshRef.current as any).MediaPipeCamera = MediaPipeCamera
+      
       setModelLoadingProgress(100)
       setDebugInfo('✅ Google MediaPipe ready!')
-      faceMeshRef.current = faceMesh
       setIsModelLoaded(true)
       
     } catch (error) {
       console.error('❌ MediaPipe initialization error:', error)
-      setCameraError('MediaPipe initialization failed: ' + (error as Error).message)
+      setCameraError(`MediaPipe initialization failed: ${(error as Error).message}`)
       setDebugInfo('❌ MediaPipe failed to load')
+      
+      // Additional error info for debugging
+      if (error instanceof Error) {
+        if (error.message.includes('FaceMesh is not a constructor')) {
+          setCameraError('⚠️ MediaPipe loading issue - Please refresh the page')
+          setDebugInfo('🔄 Try refreshing the page to reload MediaPipe properly')
+        }
+      }
     }
   }, [isAnalyzing, capturedPhoto, countdown])
 
-  // Start camera with MediaPipe
+  // Start camera with MediaPipe using dynamic import
   const startCamera = useCallback(async () => {
     setCameraError(null)
     setDebugInfo('📷 Starting camera with MediaPipe...')
@@ -315,6 +344,12 @@ const VirtualTryOn: React.FC = () => {
       
       if (!faceMeshRef.current) {
         throw new Error('MediaPipe not initialized')
+      }
+      
+      // Get MediaPipeCamera from stored reference
+      const MediaPipeCamera = (faceMeshRef.current as any).MediaPipeCamera
+      if (!MediaPipeCamera) {
+        throw new Error('MediaPipe Camera class not available')
       }
       
       const camera = new MediaPipeCamera(video, {
@@ -960,6 +995,11 @@ const VirtualTryOn: React.FC = () => {
                       <p className="text-sm text-blue-600 mt-1">
                         {modelLoadingProgress}% - MediaPipe Face Mesh
                       </p>
+                      {modelLoadingProgress < 50 && (
+                        <p className="text-xs text-blue-500 mt-1">
+                          ⚡ Loading tối ưu trên Vercel - Dynamic import
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
