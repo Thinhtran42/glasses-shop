@@ -1,7 +1,6 @@
 import React from 'react'
 import { MapPin, Phone, Mail, Clock, Navigation, PhoneCall, Send, LucideIcon } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
-// import GoogleMap from './GoogleMap' // Uncomment để dùng custom map
 
 // Define interface for contact info
 interface ContactInfoItem {
@@ -151,9 +150,6 @@ const Contact: React.FC = () => {
                 referrerPolicy="no-referrer-when-downgrade"
                 title="VisionCraft Eyewear Location"
               ></iframe>
-              
-              {/* Option 2: Custom Google Maps component (cần API key) */}
-              {/* <GoogleMap className="rounded-lg" /> */}
             </div>
           </div>
         </div>
