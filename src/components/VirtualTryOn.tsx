@@ -242,17 +242,17 @@ const VirtualTryOn: React.FC = () => {
         })
       }
       
-      // Load MediaPipe scripts with global checks
+      // Load MediaPipe scripts with reliable unpkg CDN
       setDebugInfo('📦 Loading face_mesh.js...')
       await loadScript(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js',
+        'https://unpkg.com/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js',
         'FaceMesh'
       )
       
       setModelLoadingProgress(30)
       setDebugInfo('📦 Loading camera_utils.js...')
       await loadScript(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1620248257/camera_utils.js',
+        'https://unpkg.com/@mediapipe/camera_utils@0.3.1620248257/camera_utils.js',
         'Camera'
       )
       
@@ -306,7 +306,7 @@ const VirtualTryOn: React.FC = () => {
       try {
         faceMesh = new FaceMeshClass({
           locateFile: (file: string) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${file}`
+            return `https://unpkg.com/@mediapipe/face_mesh@0.4.1633559619/${file}`
           }
         })
         console.log('✅ FaceMesh instance created successfully')
