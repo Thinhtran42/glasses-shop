@@ -179,7 +179,7 @@ const VirtualTryOn: React.FC = () => {
     }
   ]
 
-  // Initialize MediaPipe Face Mesh with comprehensive fallback strategy
+  // Initialize MediaPipe Face Mesh with CDN-first approach for Vercel
   const initializeMediaPipe = useCallback(async () => {
     try {
       // Check if running in browser environment
@@ -188,93 +188,161 @@ const VirtualTryOn: React.FC = () => {
       }
 
       setModelLoadingProgress(10)
-      setDebugInfo('🔄 Loading MediaPipe modules...')
+      setDebugInfo('🔄 Loading MediaPipe from CDN...')
       
       // Store MediaPipe classes globally for access across functions
       let FaceMeshClass: any
       let MediaPipeCameraClass: any
       
       try {
-        // Method 1: Try ES6 dynamic import first
-        setDebugInfo('🔄 Attempting ES6 dynamic import...')
+        // Method 1: Direct CDN approach (primary for production)
+        setDebugInfo('🔄 Loading MediaPipe via CDN scripts...')
         
-        const [faceMeshModule, cameraModule] = await Promise.all([
-          import('@mediapipe/face_mesh'),
-          import('@mediapipe/camera_utils')
-        ])
+        const loadScript = (src: string): Promise<void> => {
+          return new Promise((resolve, reject) => {
+            // Check if script already loaded
+            if (document.querySelector(`script[src="${src}"]`)) {
+              resolve()
+              return
+            }
+            
+            const script = document.createElement('script')
+            script.src = src
+            script.crossOrigin = 'anonymous'
+            script.onload = () => {
+              console.log(`✅ Loaded: ${src}`)
+              resolve()
+            }
+            script.onerror = () => {
+              console.error(`❌ Failed to load: ${src}`)
+              reject(new Error(`Failed to load ${src}`))
+            }
+            document.head.appendChild(script)
+          })
+        }
         
-        // Try multiple ways to access the classes
-        FaceMeshClass = faceMeshModule.FaceMesh || 
-                      faceMeshModule.default?.FaceMesh || 
-                      faceMeshModule.default ||
-                      (faceMeshModule as any).default?.FaceMesh
-                      
-        MediaPipeCameraClass = cameraModule.Camera || 
-                             cameraModule.default?.Camera || 
-                             cameraModule.default ||
-                             (cameraModule as any).default?.Camera
+        // Load MediaPipe scripts in sequence for better reliability
+        setDebugInfo('📦 Loading face_mesh.js...')
+        await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js')
         
-        console.log('📦 ES6 import results:', {
-          faceMeshModule: Object.keys(faceMeshModule),
-          cameraModule: Object.keys(cameraModule),
+        setModelLoadingProgress(25)
+        setDebugInfo('📦 Loading camera_utils.js...')
+        await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1620248257/camera_utils.js')
+        
+        setModelLoadingProgress(40)
+        setDebugInfo('🔍 Accessing MediaPipe classes from global scope...')
+        
+        // Wait a bit for scripts to initialize
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
+        // Access from global window object with multiple fallbacks
+        FaceMeshClass = (window as any).FaceMesh || 
+                       (window as any).mediapipe?.FaceMesh ||
+                       (window as any).mp?.FaceMesh ||
+                       (window as any).MediaPipeFaceMesh
+                       
+        MediaPipeCameraClass = (window as any).Camera ||
+                              (window as any).mediapipe?.Camera ||
+                              (window as any).mp?.Camera ||
+                              (window as any).CameraUtils?.Camera ||
+                              (window as any).MediaPipeCamera
+        
+        // Additional attempts if initial access fails
+        if (!FaceMeshClass || !MediaPipeCameraClass) {
+          setDebugInfo('🔄 First attempt failed, trying alternative access patterns...')
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          
+          // Try accessing from different possible namespaces
+          const globalNames = ['FaceMesh', 'mediapipe.FaceMesh', 'mp.FaceMesh', 'GoogleMediaPipe.FaceMesh']
+          const cameraNames = ['Camera', 'mediapipe.Camera', 'mp.Camera', 'CameraUtils.Camera', 'GoogleMediaPipe.Camera']
+          
+          for (const name of globalNames) {
+            const parts = name.split('.')
+            let obj = window as any
+            for (const part of parts) {
+              obj = obj?.[part]
+            }
+            if (obj && typeof obj === 'function') {
+              FaceMeshClass = obj
+              break
+            }
+          }
+          
+          for (const name of cameraNames) {
+            const parts = name.split('.')
+            let obj = window as any
+            for (const part of parts) {
+              obj = obj?.[part]
+            }
+            if (obj && typeof obj === 'function') {
+              MediaPipeCameraClass = obj
+              break
+            }
+          }
+        }
+        
+        console.log('📦 CDN import results:', {
+          windowFaceMesh: !!(window as any).FaceMesh,
+          windowCamera: !!(window as any).Camera,
+          windowMediapipe: !!(window as any).mediapipe,
+          windowMp: !!(window as any).mp,
+          windowCameraUtils: !!(window as any).CameraUtils,
           FaceMeshClass: !!FaceMeshClass,
-          MediaPipeCameraClass: !!MediaPipeCameraClass
+          MediaPipeCameraClass: !!MediaPipeCameraClass,
+          FaceMeshType: typeof FaceMeshClass,
+          CameraType: typeof MediaPipeCameraClass,
+          allWindowKeys: Object.keys(window).filter(key => 
+            key.toLowerCase().includes('face') || 
+            key.toLowerCase().includes('camera') || 
+            key.toLowerCase().includes('mediapipe') ||
+            key.toLowerCase().includes('mp')
+          )
         })
         
         if (FaceMeshClass && MediaPipeCameraClass) {
-          setDebugInfo('✅ ES6 dynamic import successful')
+          setDebugInfo('✅ CDN scripts loaded successfully')
         } else {
-          throw new Error('Classes not found in ES6 imports')
+          throw new Error(`Classes not found. FaceMesh: ${!!FaceMeshClass}, Camera: ${!!MediaPipeCameraClass}`)
         }
         
-      } catch (es6Error) {
-        console.warn('❌ ES6 import failed:', es6Error)
-        setDebugInfo('🔄 ES6 failed, trying UMD CDN...')
+      } catch (cdnError) {
+        console.warn('❌ CDN import failed, trying ES6 fallback:', cdnError)
+        setDebugInfo('🔄 CDN failed, trying ES6 import fallback...')
         
         try {
-          // Method 2: Try UMD scripts from CDN
-          const loadScript = (src: string): Promise<void> => {
-            return new Promise((resolve, reject) => {
-              // Check if script already loaded
-              if (document.querySelector(`script[src="${src}"]`)) {
-                resolve()
-                return
-              }
-              
-              const script = document.createElement('script')
-              script.src = src
-              script.onload = () => resolve()
-              script.onerror = () => reject(new Error(`Failed to load ${src}`))
-              document.head.appendChild(script)
-            })
-          }
-          
-          // Load MediaPipe UMD bundles
-          await Promise.all([
-            loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js'),
-            loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1620248257/camera_utils.js')
+          // Method 2: ES6 dynamic import as fallback
+          const [faceMeshModule, cameraModule] = await Promise.all([
+            import('@mediapipe/face_mesh'),
+            import('@mediapipe/camera_utils')
           ])
           
-          // Access from global window object
-          FaceMeshClass = (window as any).FaceMesh
-          MediaPipeCameraClass = (window as any).Camera
+          // Try multiple ways to access the classes
+          FaceMeshClass = faceMeshModule.FaceMesh || 
+                        faceMeshModule.default?.FaceMesh || 
+                        faceMeshModule.default ||
+                        (faceMeshModule as any).default?.FaceMesh
+                        
+          MediaPipeCameraClass = cameraModule.Camera || 
+                               cameraModule.default?.Camera || 
+                               cameraModule.default ||
+                               (cameraModule as any).default?.Camera
           
-          console.log('📦 UMD CDN results:', {
-            windowFaceMesh: !!(window as any).FaceMesh,
-            windowCamera: !!(window as any).Camera,
+          console.log('📦 ES6 fallback results:', {
+            faceMeshModule: Object.keys(faceMeshModule),
+            cameraModule: Object.keys(cameraModule),
             FaceMeshClass: !!FaceMeshClass,
             MediaPipeCameraClass: !!MediaPipeCameraClass
           })
           
           if (FaceMeshClass && MediaPipeCameraClass) {
-            setDebugInfo('✅ UMD CDN import successful')
+            setDebugInfo('✅ ES6 fallback successful')
           } else {
-            throw new Error('Classes not found in UMD globals')
+            throw new Error('Classes not found in ES6 fallback')
           }
           
-        } catch (umdError) {
-          console.error('❌ UMD CDN also failed:', umdError)
-          throw new Error(`All import methods failed. ES6: ${(es6Error as Error).message}, UMD: ${(umdError as Error).message}`)
+        } catch (es6Error) {
+          console.error('❌ Both CDN and ES6 methods failed:', { cdnError, es6Error })
+          throw new Error(`All import methods failed. CDN: ${(cdnError as Error).message}, ES6: ${(es6Error as Error).message}`)
         }
       }
       
@@ -410,11 +478,40 @@ const VirtualTryOn: React.FC = () => {
         throw new Error('MediaPipe not initialized')
       }
       
-      // Get MediaPipe Camera class from global storage
-      const MediaPipeCameraClass = (window as any).MediaPipeCamera
+      // Get MediaPipe Camera class from global storage with multiple fallbacks
+      let MediaPipeCameraClass = (window as any).MediaPipeCamera ||
+                                (window as any).Camera ||
+                                (window as any).mediapipe?.Camera ||
+                                (window as any).mp?.Camera ||
+                                (window as any).CameraUtils?.Camera
+                                
       if (!MediaPipeCameraClass) {
-        throw new Error('MediaPipe Camera class not available. Re-initialization may be required.')
+        // Try alternative access patterns
+        const cameraNames = ['Camera', 'mediapipe.Camera', 'mp.Camera', 'CameraUtils.Camera', 'GoogleMediaPipe.Camera']
+        
+        for (const name of cameraNames) {
+          const parts = name.split('.')
+          let obj = window as any
+          for (const part of parts) {
+            obj = obj?.[part]
+          }
+          if (obj && typeof obj === 'function') {
+            MediaPipeCameraClass = obj
+            break
+          }
+        }
       }
+      
+      if (!MediaPipeCameraClass) {
+        console.error('Available window properties:', Object.keys(window).filter(key => 
+          key.toLowerCase().includes('camera') || 
+          key.toLowerCase().includes('mediapipe') ||
+          key.toLowerCase().includes('mp')
+        ))
+        throw new Error('MediaPipe Camera class not available. Please check MediaPipe initialization.')
+      }
+      
+      console.log('🎯 Using Camera class:', MediaPipeCameraClass.name || 'Anonymous')
       
       const camera = new MediaPipeCameraClass(video, {
         onFrame: async () => {
